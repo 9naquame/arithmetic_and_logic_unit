@@ -538,7 +538,7 @@ entity alu_ones_counter64 is
 end entity;
 
 architecture alu_ones_counter64_design of alu_ones_counter64 is
-	type MATRIX is array (0 to 63) of bit_vector (6 downto 0) ;
+	type MATRIX is array (0 to 63) of bit_vector (6 downto 0);
 	
 	component alu_adder7
 		port(A, B : in bit_vector (6 downto 0); CIN : in bit; SUM : out bit_vector (6 downto 0); COUT : out bit);	
@@ -605,7 +605,7 @@ entity alu_shifter64 is
 end entity;
 
 architecture alu_shifter64_design of alu_shifter64 is
-	type MATRIX is array (0 to 63) of bit_vector (1 downto 0) ;
+	type MATRIX is array (0 to 63) of bit_vector (1 downto 0);
 	
 	component alu_not_gate
 		port (X : in bit; Y : out bit);
@@ -946,10 +946,30 @@ end architecture;
 
 
 
+-- Entity and architecture for 64-BIT XNOR-GATE
+-- COMPONENT list:
+--		alu_xnor_gate (XNOR-GATE)
+entity alu_xnor_gate64 is
+	port (A, B : in bit_vector (63 downto 0); Y : out bit_vector (63 downto 0));
+end entity;
+
+architecture alu_xnor_gate64_design of alu_xnor_gate64 is	
+	component alu_xnor_gate
+		port (A, B : in bit; Y : out bit);
+	end component;
+	
+	begin
+		GENERATED_XNOR_VALUES : for i in 0 to 63 generate
+			XNOR64_VALUES : alu_xnor_gate port map (A(i), B(i), Y(i));
+		end generate;
+end architecture;
+
+
+
 -- Entity and architecture for 32-BIT COMPARATOR
 -- COMPONENT list:
 --		alu_extend64 (32 to 64 BIT CIRCUIT)
---		alu_xnor_gate32 (32-BIT XNOR-GATE)
+--		alu_xnor_gate64 (64-BIT XNOR-GATE)
 --		alu_not_gate32 (32-BIT NOT-GATE)
 --		alu_and_gate64 (64-BIT AND-GATE)
 entity alu_comparator32 is
@@ -961,8 +981,8 @@ architecture alu_comparator32_design of alu_comparator32 is
 		port (X : in bit_vector (31 downto 0); Y : out bit_vector (63 downto 0));
 	end component;
 	
-	component alu_xnor_gate32
-		port (A, B : in bit_vector (31 downto 0); Y : out bit_vector (63 downto 0));
+	component alu_xnor_gate64
+		port (A, B : in bit_vector (63 downto 0); Y : out bit_vector (63 downto 0));
 	end component;
 	
 	component alu_not_gate32
@@ -979,13 +999,77 @@ architecture alu_comparator32_design of alu_comparator32 is
 		COMPARATOR_B_NOT : alu_not_gate32 port map(B, B_BAR);
 		COMPARATOR_A_EXTEND : alu_extend64 port map (A, A_IN);
 		COMPARATOR_B_EXTEND : alu_extend64 port map (B, B_IN);		
-		COMPARATOR_EQUAL : alu_xnor_gate32 port map(A, B, EQUAL);
+		COMPARATOR_EQUAL : alu_xnor_gate64 port map(A_IN, B_IN, EQUAL);
 		COMPARATOR_GREATER : alu_and_gate64 port map(A_IN, B_BAR, GREATER);
 
 		Y <= EQUAL when (EQUAL = "1111111111111111111111111111111111111111111111111111111111111111")
 			else A_IN when (GREATER = "1111111111111111111111111111111111111111111111111111111111111111")
 			else B_IN;
+end architecture;
+
+
+
+-- Entity and architecture for 32-BIT MULTIPLIER
+-- COMPONENT list:
+--		alu_extend64 (32 to 64 BIT CIRCUIT)
+--		alu_shifter64 (64-BIT SHIFT CIRCUIT)
+--		alu_adder64 (64-BIT RIPPLE-ADDER)
+--		alu_and_gate (AND-GATE)
+entity alu_multiplier32 is
+	port (A, B : in bit_vector (31 downto 0); Y : out bit_vector (63 downto 0));
+end entity;
+
+architecture alu_multiplier32_design of alu_multiplier32 is
+	type MATRIX is array (0 to 31) of bit_vector (63 downto 0);
+	type DIMENSIONAL is array (0 to 31) of MATRIX;
+	
+	component alu_extend64
+		port (X : in bit_vector (31 downto 0); Y : out bit_vector (63 downto 0));
+	end component;
+	
+	component alu_shifter64
+		port (
+			X : in bit_vector (63 downto 0); S : in bit_vector (1 downto 0);
+			Y : out bit_vector (63 downto 0)
+		);
+	end component;
+	
+	component alu_adder64
+		port (
+			A, B : in bit_vector (63 downto 0); CIN : in bit;
+			SUM : out bit_vector (63 downto 0); COUT : out bit
+		);	
+	end component;
+	
+	component alu_and_gate
+		port (A, B : in bit; Y : out bit);
+	end component;
+	
+	signal SHABX : DIMENSIONAL;
+	signal SHAB, AB, ABX, SUM : MATRIX;
+	
+	begin
+		GENERATED_OUTER_AB_VALUES : for i in 0 to 31 generate
+			GENERATED_INNER_AB_VALUES : for j in 0 to 31 generate
+				AB_VALUES : alu_and_gate port map (B(i), A(j), AB(i)(j));
+			end generate;
+			
+			SHABX(i)(0) <= AB(i);
+		end generate;
 		
+		GENERATED_NEXT_AB_VALUES : for i in 1 to 31 generate
+			GENERATED_SHIFT_AB_VALUES : for k in 1 to i generate
+				SHIFT_AB_VALUES : alu_shifter64 port map (SHABX(i)(k - 1), "00", SHABX(i)(k));
+			end generate;
+			
+			SHAB(i) <= SHABX(i)(i);
+		end generate;
+				
+		GENERATED_SUM_AB_VALUES : for i in 1 to 31 generate
+			SUM_AB_VALUES : alu_adder64 port map (SHAB(i - 1), SHAB(i), '0', SUM(i));
+		end generate;	
+		
+		Y <= SUM(31);
 end architecture;
 
 
@@ -1053,6 +1137,7 @@ end architecture;
 --		alu_xnor_gate32 (2-INPUT 32-BIT XNOR-GATE)
 --		alu_extend64 (32 to 64 BIT CIRCUIT)
 --		alu_comparator32 (32-BIT COMPARATOR)
+--		alu_multiplier32 (32-BIT MULTIPLIER)
 --		alu_twos_complements32 (32 BIT TWO's COMPLEMEMNTS)
 entity arithmetic_and_logic_unit is
 	port (
@@ -1188,6 +1273,11 @@ architecture arithmetic_and_logic_unit_design of arithmetic_and_logic_unit is
 	component alu_twos_complements32
 		port (X : in bit_vector (31 downto 0); Y : out bit_vector (63 downto 0));
 	end component;
+		
+	component alu_multiplier32
+		port (A, B : in bit_vector (31 downto 0); Y : out bit_vector (63 downto 0));
+	end component;
+
 	
 	signal S4, S3, S2, S1, S0 : bit;
 	signal S4_BAR, S3_BAR, S2_BAR, S1_BAR, S0_BAR : bit;
@@ -1306,7 +1396,7 @@ architecture arithmetic_and_logic_unit_design of arithmetic_and_logic_unit is
 		GENERATE_IN12 : alu_comparator32 port map (A, B, IN12); 
 		
 		GENERATE_IN13 : alu_adder64 port map (IN5, IN22, '0', IN13); 
---		GENERATE_IN14 : alu_shifter64 port map (IN5, "10", IN11); 
+		GENERATE_IN14 : alu_multiplier32 port map (A, B, IN14); 
 --		GENERATE_IN15 : alu_shifter64 port map (IN5, "10", IN11); 
 --		GENERATE_IN16 : alu_shifter64 port map (IN5, "10", IN11); 
 		
@@ -1334,7 +1424,7 @@ architecture arithmetic_and_logic_unit_design of arithmetic_and_logic_unit is
 				IN1(i), IN2(i), IN3(i), IN4(i),
 				IN5(i), IN6(i), IN7(i), IN8(i),
 				IN9(i), IN10(i), IN11(i), IN12(i),
-				IN13(i), IN1(i), IN1(i), IN1(i),
+				IN13(i), IN14(i), IN1(i), IN1(i),
 				MUX_1_S3, MUX_1_S2, MUX_1_S1, MUX_1_S0,
 				MUX_1(i)
 			);
